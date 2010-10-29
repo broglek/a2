@@ -1,0 +1,28 @@
+These source files are provided for use on Linux x86 machines. For use of
+these files on other platforms you must use appropriately compiled
+libraries (for Mesa/GL and netpbm).
+
+Read the comments at the top of image.c image_view.c and image_view2.c to
+see how to create the imaging executables.
+
+100 ppm files are included (sampled from a Star Wars movie). You can
+recycle through these frames if you want your movies to last longer.
+
+The sockets directory contains source code for simple TCP and UDP routines
+and should be self-explanatory. These are almost the canonical versions of
+TCP/UDP sockets code and I've used them for many projects. 
+
+..and finally, don't forget to setup your LD_LIBRARY_PATH environment
+variable to use the imaging binaries. For tcsh/csh, something like:
+
+setenv LD_LIBRARY_PATH ./lib/netpbm:${LD_LIBRARY_PATH} is required.
+
+For bash/sh etc, try:
+
+LD_LIBRARY_PATH=./lib/netpbm:${LD_LIBRARY_PATH}; export LD_LIBRARY_PATH
+
+Have fun!
+
+Rich.
+
+
