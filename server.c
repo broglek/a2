@@ -62,12 +62,23 @@ void* worker_routine(void * n)
   printf("I am a worker number %d\n",*(int *)n);
 }
 
+void* dispatch_routine(void * n)
+{
+  printf("Dispatcher thread reporting in.\n");
+}
+
 int main() 
 {
   
   int s, t, i;
   pthread_t worker_threads[WORKERS];
+  pthread_t dispatcher;
   int *thread_ids[WORKERS];
+  if(pthread_create(&dispatcher,NULL,dispatch_routine,NULL))
+    {
+      printf("pthread_create failed on dispatcher.\n");
+      exit(1);
+    }
   for(i=0;i<WORKERS;i++)
     {
       thread_ids[i] = (int *)malloc(sizeof(int));
