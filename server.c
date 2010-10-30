@@ -59,7 +59,7 @@ int get_connection(int s, struct sockaddr* addr,socklen_t *cliaddr)
 
 void* worker_routine(void * n)
 {
-  printf("I am a worker number %d\n",(int)n);
+  printf("I am a worker number %d\n",*(int *)n);
 }
 
 int main() 
@@ -67,9 +67,12 @@ int main()
   
   int s, t, i;
   pthread_t worker_threads[WORKERS];
+  int *thread_ids[WORKERS];
   for(i=0;i<WORKERS;i++)
     {
-      if (pthread_create(&worker_threads[i], NULL, worker_routine, (void *)i))
+      thread_ids[i] = (int *)malloc(sizeof(int));
+      *thread_ids[i] = i;
+      if (pthread_create(&worker_threads[i], NULL, worker_routine, (void *)thread_ids[i]))
         {
           printf("pthread_create failed on thread %d.\n",i);
           exit(1);
