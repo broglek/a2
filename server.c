@@ -16,13 +16,26 @@
 #define MAXHOSTNAME 512
 #define WORKERS 6
 #define MAXWORKERS 30
+#define MAXSLOTS 30
+
 
 struct in_addr* client_address;
-
+char* circbuf[MAXSLOTS];
+int workpointer, dispatchpointer;
+pthread_mutex_t circmutex;
+pthread_mutex_t worker_mutex[MAXWORKERS];
+pthread_cond_t worker_cv[MAXWORKERS];
 struct worker_thread{
   int active;
   pthread_t thread;
 };
+struct worker_data{
+  int id;
+  int active;
+  int t;
+  pthread_t thread;
+};
+
 
 int establish(unsigned short portnum)
 {
@@ -65,7 +78,17 @@ int get_connection(int s, struct sockaddr* addr,socklen_t *cliaddr)
 
 void* worker_routine(void * n)
 {
-  printf("I am a worker number %d\n",*(int *)n);
+  struct worker_data *mydata;
+  mydata = (struct worker_data *) n;
+  printf("I am a worker number %d\n",mydata->id);
+  pthread_mutex_lock(&worker_mutex[mydata->id]);
+  while(mydata->active != 1)
+    {
+      pthread_cond_wait(&worker_cv[mydata->id], &worker_mutex[mydata->id]);
+      printf("Woken Up with job.  Thread id %d socket desc %d\n.",mydata->id,mydata->t);
+      mydata->active = 0;
+    }
+  pthread_mutex_unlock(&worker_mutex[mydata->id]);
 }
 
 void* dispatch_routine(void * n)
@@ -77,9 +100,17 @@ int main()
 {
   
   int s, t, i;
-  struct worker_thread worker_threads[MAXWORKERS];
+  pthread_mutex_init(&circmutex,NULL);
+  workpointer = 0;
+  dispatchpointer = 0;
+  //struct worker_thread worker_threads[MAXWORKERS];
   pthread_t dispatcher;
-  int *thread_ids[MAXWORKERS];
+  struct worker_data thread_data[MAXWORKERS];
+  for (i=0;i<MAXWORKERS;i++)
+    {
+      pthread_mutex_init(&worker_mutex[i],NULL);
+      pthread_cond_init(&worker_cv[i],NULL);
+    }
   if(pthread_create(&dispatcher,NULL,dispatch_routine,NULL))
     {
       printf("pthread_create failed on dispatcher.\n");
@@ -87,11 +118,11 @@ int main()
     }
   for(i=0;i<WORKERS;i++)
     {
-      thread_ids[i] = (int *)malloc(sizeof(int));
-      *thread_ids[i] = i;
-      worker_threads[i].active = 0;
+      //thread_data[i] = (struct worker_data *)malloc(sizeof(int));
+      thread_data[i].id = i;
+      thread_data[i].active = 0;
       
-      if (pthread_create(&(worker_threads[i].thread), NULL, worker_routine, (void *)thread_ids[i]))
+      if (pthread_create(&(thread_data[i].thread), NULL, worker_routine, (void *)&thread_data[i]))
         {
           printf("pthread_create failed on thread %d.\n",i);
           exit(1);
@@ -131,6 +162,23 @@ int main()
       break;
     }
     printf("connection from %s, port %hu\n", ip, port);
-    client_address =  &(((struct sockaddr_in *)cliaddr)->sin_addr);
+    //client_address =  &(((struct sockaddr_in *)cliaddr)->sin_addr);
+    int f;
+    for(f=0;f<MAXWORKERS;f++)
+      {
+	if(&thread_data[f] != NULL)
+	  {
+	    if(thread_data[f].active == 0)
+	      {
+		pthread_mutex_lock(&worker_mutex[f]);
+		thread_data[f].t = t;
+		thread_data[f].active = 1;
+		pthread_cond_signal(&worker_cv[f]);
+		pthread_mutex_unlock(&worker_mutex[f]);
+		break;
+	      }
+	  }
+      }
+    
  }
 }
