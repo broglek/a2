@@ -15,8 +15,14 @@
 #define PORTNUM 5000
 #define MAXHOSTNAME 512
 #define WORKERS 6
+#define MAXWORKERS 30
 
 struct in_addr* client_address;
+
+struct worker_thread{
+  int active;
+  pthread_t thread;
+};
 
 int establish(unsigned short portnum)
 {
@@ -71,9 +77,9 @@ int main()
 {
   
   int s, t, i;
-  pthread_t worker_threads[WORKERS];
+  struct worker_thread worker_threads[MAXWORKERS];
   pthread_t dispatcher;
-  int *thread_ids[WORKERS];
+  int *thread_ids[MAXWORKERS];
   if(pthread_create(&dispatcher,NULL,dispatch_routine,NULL))
     {
       printf("pthread_create failed on dispatcher.\n");
@@ -83,7 +89,9 @@ int main()
     {
       thread_ids[i] = (int *)malloc(sizeof(int));
       *thread_ids[i] = i;
-      if (pthread_create(&worker_threads[i], NULL, worker_routine, (void *)thread_ids[i]))
+      worker_threads[i].active = 0;
+      
+      if (pthread_create(&(worker_threads[i].thread), NULL, worker_routine, (void *)thread_ids[i]))
         {
           printf("pthread_create failed on thread %d.\n",i);
           exit(1);
