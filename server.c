@@ -17,18 +17,27 @@
 #define WORKERS 6
 #define MAXWORKERS 30
 #define MAXSLOTS 30
+#define M 5
+
+struct circ_payload{
+  int priority;
+  int worker_id;
+  char *message;
+  //video frame goes here
+};
 
 
 struct in_addr* client_address;
-char* circbuf[MAXSLOTS];
-int workpointer, dispatchpointer;
-pthread_mutex_t circmutex;
+struct circ_payload circbuf[MAXSLOTS];
+int workpointer, dispatchpointer,slotfill;
+pthread_mutex_t fullbuf_mutex; //for buffer full scenario
+pthread_cond_t fullbuf_cv;     //for buffer full scenario
+pthread_mutex_t dispatch_mutex;
+pthread_cond_t dispatch_cv;
 pthread_mutex_t worker_mutex[MAXWORKERS];
 pthread_cond_t worker_cv[MAXWORKERS];
-struct worker_thread{
-  int active;
-  pthread_t thread;
-};
+
+
 struct worker_data{
   int id;
   int active;
@@ -62,7 +71,7 @@ int establish(unsigned short portnum)
     return(-1);          /* bind address to socket */
   }
   printf("Listening Now on port 5000\n\n");
-  listen(s, 1);           /* max # of queued connects */
+  listen(s, 10);           /* max # of queued connects */
  
   return(s); 
 }
@@ -79,16 +88,33 @@ int get_connection(int s, struct sockaddr* addr,socklen_t *cliaddr)
 void* worker_routine(void * n)
 {
   struct worker_data *mydata;
+  struct circ_payload job;
   mydata = (struct worker_data *) n;
   printf("I am a worker number %d\n",mydata->id);
   pthread_mutex_lock(&worker_mutex[mydata->id]);
   while(mydata->active != 1)
     {
       pthread_cond_wait(&worker_cv[mydata->id], &worker_mutex[mydata->id]);
-      printf("Woken Up with job.  Thread id %d socket desc %d\n.",mydata->id,mydata->t);
-      mydata->active = 0;
+  printf("Woken Up with job.  Thread id %d socket desc %d\n Going to put in buffer.\n",mydata->id,mydata->t);
+  pthread_mutex_lock(&fullbuf_mutex);
+  while(slotfill == MAXSLOTS)
+    {
+      pthread_cond_wait(&fullbuf_cv,&fullbuf_mutex);
     }
+
+      job.worker_id = mydata->id;
+      job.priority = mydata->id;
+      job.message = malloc(300);
+      sprintf(job.message,"Thread id is %d socket is %d\n",mydata->id,mydata->t);
+      circbuf[workpointer] = job;
+      printf("in worker active is %d %d\n",mydata->id,mydata->active);
+      //printf("%s\n",circbuf[workpointer].message);
+      workpointer = (workpointer + 1) % MAXSLOTS;
+      pthread_mutex_unlock(&fullbuf_mutex);
+      mydata->active = 0;
+
   pthread_mutex_unlock(&worker_mutex[mydata->id]);
+    }
 }
 
 void* dispatch_routine(void * n)
@@ -100,12 +126,15 @@ int main()
 {
   
   int s, t, i;
-  pthread_mutex_init(&circmutex,NULL);
+  //pthread_mutex_init(&circmutex,NULL);
   workpointer = 0;
   dispatchpointer = 0;
+  slotfill = 0;
   //struct worker_thread worker_threads[MAXWORKERS];
   pthread_t dispatcher;
   struct worker_data thread_data[MAXWORKERS];
+  pthread_mutex_init(&fullbuf_mutex,NULL);
+  pthread_cond_init(&fullbuf_cv,NULL);
   for (i=0;i<MAXWORKERS;i++)
     {
       pthread_mutex_init(&worker_mutex[i],NULL);
@@ -173,6 +202,8 @@ int main()
 		pthread_mutex_lock(&worker_mutex[f]);
 		thread_data[f].t = t;
 		thread_data[f].active = 1;
+		printf("thread %d takes it\n",f);
+		//while(slotfill == MAXSLOTS);
 		pthread_cond_signal(&worker_cv[f]);
 		pthread_mutex_unlock(&worker_mutex[f]);
 		break;
