@@ -47,6 +47,25 @@ struct worker_data{
   pthread_t thread;
 };
 
+void sort(struct circ_payload circ[], int size)
+{
+  int i,j;
+  struct circ_payload temp;
+  for(i = dispatchpointer + 1;i < (dispatchpointer+size) % MAXSLOTS;i = (i+1) % MAXSLOTS)
+    {
+      temp = circ[i];
+      j = i;
+      while((j > dispatchpointer) && circ[j-1].priority > temp.priority)
+	{
+	  circ[j] = circ[j-1];
+	  j = (j + MAXSLOTS-1) % MAXSLOTS;
+	}
+      circ[j] = temp;
+      i = (i+1) % MAXSLOTS;
+    }
+}
+      
+
 
 int establish(unsigned short portnum)
 {
@@ -131,7 +150,7 @@ void* worker_routine(void * n)
       strcpy(job->args,args);
       sprintf(job->message,"Message# %d Worker Thread %d Socket %d:%s\n",i,job->worker_id,job->t,message);
       circbuf[workpointer] = *job;
-      printf("in worker active is %d %d\n",mydata->id,mydata->active);
+      //printf("in worker active is %d %d\n",mydata->id,mydata->active);
       //printf("%s\n",circbuf[workpointer].message);
       workpointer = (workpointer + 1) % MAXSLOTS;
       slotfill++;
@@ -155,8 +174,9 @@ void* dispatch_routine(void * n)
 	{
 	  pthread_cond_wait(&dispatch_cv,&fullbuf_mutex);
 	}
+      sort(circbuf,slotfill);
       job = circbuf[dispatchpointer];
-      printf("dispatched job %d\n %s \n",job.worker_id,job.message);
+      printf("dispatched prio %d: %s",job.priority,job.message);
       dprintf(job.t,"%s",job.message);
       slotfill--;
       dispatchpointer = (dispatchpointer + 1) % MAXSLOTS;
