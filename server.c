@@ -110,7 +110,10 @@ void* worker_routine(void * n)
       printf("in worker active is %d %d\n",mydata->id,mydata->active);
       //printf("%s\n",circbuf[workpointer].message);
       workpointer = (workpointer + 1) % MAXSLOTS;
+      slotfill++;
+      pthread_cond_signal(&dispatch_cv);
       pthread_mutex_unlock(&fullbuf_mutex);
+      
       mydata->active = 0;
 
   pthread_mutex_unlock(&worker_mutex[mydata->id]);
@@ -119,6 +122,23 @@ void* worker_routine(void * n)
 
 void* dispatch_routine(void * n)
 {
+  struct circ_payload job;
+  while(1)
+    {
+      pthread_mutex_lock(&fullbuf_mutex);
+      while(slotfill == 0)
+	{
+	  pthread_cond_wait(&dispatch_cv,&fullbuf_mutex);
+	}
+      job = circbuf[dispatchpointer];
+      printf("dispatched job %d\n",job.worker_id);
+      slotfill--;
+      dispatchpointer = (dispatchpointer + 1) % MAXSLOTS;
+      pthread_cond_signal(&fullbuf_cv);
+      pthread_mutex_unlock(&fullbuf_mutex);
+    }
+      
+      
   printf("Dispatcher thread reporting in.\n");
 }
 
@@ -135,6 +155,9 @@ int main()
   struct worker_data thread_data[MAXWORKERS];
   pthread_mutex_init(&fullbuf_mutex,NULL);
   pthread_cond_init(&fullbuf_cv,NULL);
+  pthread_mutex_init(&dispatch_mutex,NULL);
+  pthread_cond_init(&dispatch_cv,NULL);
+
   for (i=0;i<MAXWORKERS;i++)
     {
       pthread_mutex_init(&worker_mutex[i],NULL);
