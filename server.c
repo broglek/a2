@@ -22,7 +22,9 @@
 struct circ_payload{
   int priority;
   int worker_id;
+  int t;
   char *message;
+  char *args;
   //video frame goes here
 };
 
@@ -89,6 +91,10 @@ void* worker_routine(void * n)
 {
   struct worker_data *mydata;
   struct circ_payload job;
+  char delims[] = ":";
+  char *result = NULL;
+  int rd;
+  char *buf = malloc(2000);
   mydata = (struct worker_data *) n;
   printf("I am a worker number %d\n",mydata->id);
   pthread_mutex_lock(&worker_mutex[mydata->id]);
@@ -101,11 +107,19 @@ void* worker_routine(void * n)
     {
       pthread_cond_wait(&fullbuf_cv,&fullbuf_mutex);
     }
-
-      job.worker_id = mydata->id;
-      job.priority = mydata->id;
+      rd = read(mydata->t,buf,1999);
+      buf[rd] = '\0';
+      result = strtok(buf, delims);
+      job.worker_id = strtol(result, NULL, 0);
+      result = strtok(NULL, delims);
+      job.priority = strtol(result, NULL,0);
+      job.t = mydata->t;
+      result = strtok(NULL, delims);
       job.message = malloc(300);
-      sprintf(job.message,"Thread id is %d socket is %d\n",mydata->id,mydata->t);
+      sprintf(job.message,"%s",result);
+      result = strtok(NULL, delims);
+      job.args = malloc(300);
+      sprintf(job.args,"%s",result);
       circbuf[workpointer] = job;
       printf("in worker active is %d %d\n",mydata->id,mydata->active);
       //printf("%s\n",circbuf[workpointer].message);
@@ -131,7 +145,8 @@ void* dispatch_routine(void * n)
 	  pthread_cond_wait(&dispatch_cv,&fullbuf_mutex);
 	}
       job = circbuf[dispatchpointer];
-      printf("dispatched job %d\n",job.worker_id);
+      printf("dispatched job %d\n %s \n",job.worker_id,job.message);
+      dprintf(job.t,"dispatched job %d\n %s\n",job.worker_id,job.message);
       slotfill--;
       dispatchpointer = (dispatchpointer + 1) % MAXSLOTS;
       pthread_cond_signal(&fullbuf_cv);
