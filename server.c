@@ -17,14 +17,15 @@
 #define WORKERS 6
 #define MAXWORKERS 30
 #define MAXSLOTS 30
-#define M 5
+#define M 10
 
 struct circ_payload{
   int priority;
   int worker_id;
   int t;
   char *message;
-  char *args;
+  char *args1;
+  int args2;
   //video frame goes here
 };
 
@@ -113,7 +114,8 @@ void* worker_routine(void * n)
   char delims[] = ":";
   char *result = NULL;
   char *message = NULL;
-  char *args = NULL;
+  char *args1 = NULL;
+  int args2;
   int rd,i,id,prio;
   char *buf = malloc(2000); 
   mydata = (struct worker_data *) n;
@@ -124,6 +126,12 @@ void* worker_routine(void * n)
       pthread_cond_wait(&worker_cv[mydata->id], &worker_mutex[mydata->id]);
   printf("Woken Up with job.  Thread id %d socket desc %d\n Going to put in buffer.\n",mydata->id,mydata->t);
   rd = read(mydata->t,buf,1999);
+  if(rd == 0)
+    {
+      printf("client exited unexpectedly\n");
+      exit(1);
+    }
+      
   buf[rd] = '\0';    
         result = strtok(buf, delims);
       id = strtol(result, NULL, 0);
@@ -132,7 +140,12 @@ void* worker_routine(void * n)
       //job.t = mydata->t;
       message = strtok(NULL, delims);
       
-      args = strtok(NULL, delims);      
+      args1 = strtok(NULL, delims);
+      result = strtok(NULL,delims);
+      if(result != NULL)
+	args2 = strtol(result,NULL,0);
+      else
+	args2 = -2;
 
   for(i=0;i<100;i++)
     {
@@ -145,9 +158,10 @@ void* worker_routine(void * n)
       job->worker_id = id;
       job->priority = prio;
       job->message = malloc(900);
-      job->args = malloc(300);
+      job->args1 = malloc(300);
       job->t = mydata->t;
-      strcpy(job->args,args);
+      job->args2 = args2;
+      strcpy(job->args1,args1);
       sprintf(job->message,"Message# %d Worker Thread %d Socket %d:%s\n",i,job->worker_id,job->t,message);
       circbuf[workpointer] = *job;
       //printf("in worker active is %d %d\n",mydata->id,mydata->active);
@@ -155,7 +169,8 @@ void* worker_routine(void * n)
       workpointer = (workpointer + 1) % MAXSLOTS;
       slotfill++;
       free(job);
-      pthread_cond_signal(&dispatch_cv);
+      //if(slotfill >=M)
+	pthread_cond_signal(&dispatch_cv);
       pthread_mutex_unlock(&fullbuf_mutex);
     }
       mydata->active = 0;
